@@ -1,0 +1,109 @@
+---
+title: "PML_Project"
+author: "Siva"
+date: "12/23/2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Problem 
+The goal of your project is to predict the manner in which they did the exercise. Six participants were asked to perform barbell lifts correctly and incorrectly in 5 different ways. In the “classe” variable in the training set an “A” corresponds to the correct execution of the exercise, while the other 4 classes (B through E) correspond to common mistakes. By using data from accelerometers on the belt, forearm, arm, and dumbell we aim to predict which class the observation falls in.
+
+#Overview
+The model building workflow adopted for this task follows the pattern outlined in lectures: 
+>Question..Input..features..algrithm..predict..evaluation
+
+Cross Validation has been used as a method for the trainControl function with 4 folds used.
+
+The out of sample error was found to be 0.0037% when the model was applied to the test data derived from the training set.
+
+Choices made at each step are described in the workflow below.
+
+```{r }
+##Data Objects
+training = read.csv("pml-training.csv",header=TRUE, na.strings=c("NA","#DIV/0!",""))
+testing = read.csv("pml-testing.csv",header=TRUE, na.strings=c("NA","#DIV/0!",""))
+library(caret)
+library(randomForest)
+library(e1071)
+#suppressWarnings(suppressMessages(library(caret)))
+#suppressWarnings(suppressMessages(library(randomForest)))
+#suppressWarnings(suppressMessages(library(e1071)))
+set.seed(1603)
+
+##Data Exploration & Cleansing
+#The training dataset contains close to 150+ predictors. Let’s first check it for columns with near zero variance. Then we’ll also eliminate those columns which are not truly predictors, namely the first 6 columns. Lastly, we’ll eliminate those columns with a high percentage (50%) of NAs
+
+trainingFilename   <- 'pml-training.csv'
+quizFilename       <- 'pml-testing.csv'
+
+training.df     <-read.csv(trainingFilename, na.strings=c("NA","","#DIV/0!"))
+training.df     <-training.df[,colSums(is.na(training.df)) == 0]
+dim(training.df) #;head(training.df,3)
+
+quiz.df         <-read.csv(quizFilename , na.strings=c("NA", "", "#DIV/0!"))
+quiz.df         <-quiz.df[,colSums(is.na(quiz.df)) == 0]
+dim(quiz.df) #;head(quiz.df,3)
+
+Training.df   <-training.df[,-c(1:7)]
+Quiz.df <-quiz.df[,-c(1:7)]
+dim(Training.df)
+##Alogrithm : Partition the data in to training, testing and/or validation sets.
+inTrain     <- createDataPartition(Training.df$classe, p = 0.6, list = FALSE)
+inTraining  <- Training.df[inTrain,]
+inTest      <- Training.df[-inTrain,]
+dim(inTraining);dim(inTest)
+
+## Model Analysis and cross validation 
+myModelFilename <- "myModel.RData"
+if (!file.exists(myModelFilename)) {
+    library(doParallel)
+    ncores <- makeCluster(detectCores() - 1)
+    registerDoParallel(cores=ncores)
+    getDoParWorkers() # 3    
+    
+    # use Random Forest method with Cross Validation, 4 folds
+    myModel <- train(classe ~ .
+                , data = inTraining
+                , method = "rf"
+                , metric = "Accuracy"  
+                , preProcess=c("center", "scale") 
+                , trControl=trainControl(method = "cv"
+                                        , number = 4 # folds of the training data
+                                        , p= 0.60
+                                        , allowParallel = TRUE 
+#                                       , seeds=NA 
+                                        )
+                )
+
+    save(myModel, file = "myModel.RData")
+    stopCluster(ncores)
+} else {
+    # Use cached model  
+    load(file = myModelFilename, verbose = TRUE)
+}
+print(myModel, digits=4)
+
+
+##Predict
+#Predicting the activity performed using the training file derived test subset
+
+predTest <- predict(myModel, newdata=inTest)
+
+#Evaluation
+confusionMatrix(predTest, inTest$classe)
+#Final Model data and important predictors in the model
+myModel$finalModel
+
+varImp(myModel)
+
+#The accuracy of the model by predicting with the Validation/Quiz set supplied in the test file.
+
+print(predict(myModel, newdata=Quiz.df))
+
+
+```
+
